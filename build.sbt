@@ -29,6 +29,12 @@ val micro = project.enablePlugins(JmhPlugin).settings(
   libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
 )
 
+val library = project.enablePlugins(JmhPlugin).settings(
+  description := "Finer grained benchmarks of library",
+  libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value,
+  scalacOptions += (if (scalaVersion.value.startsWith("2.11")) "-optimize" else "-opt:l:classpath")
+)
+
 val jvm = project.enablePlugins(JmhPlugin).settings(
   description := "Pure Java benchmarks for demonstrating performance anomalies independent from the Scala language/library",
   autoScalaLibrary := false
