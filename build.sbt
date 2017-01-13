@@ -17,12 +17,19 @@ resolvers ++= (
     Nil
 )
 
+val infrastructure = project.enablePlugins(JmhPlugin).settings(
+  description := "Infrastrucuture to persist benchmark results annoted with context from Git",
+  autoScalaLibrary := false,
+  libraryDependencies += "org.influxdb" % "influxdb-java" % "2.5"
+)
+
 val compilation = project.enablePlugins(JmhPlugin).settings(
   // We should be able to switch this project to a broad range of Scala versions for comparative
   // benchmarking. As such, this project should only depend on the high level `MainClass` compiler API.
   description := "Black box benchmark of the compiler",
   libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
-)
+).dependsOn(infrastructure)
+
 
 val micro = project.enablePlugins(JmhPlugin).settings(
   description := "Finer grained benchmarks of compiler internals",
