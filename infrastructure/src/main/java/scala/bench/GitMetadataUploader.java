@@ -38,7 +38,6 @@ public class GitMetadataUploader {
             ObjectId resolvedPrevBranch = repo.resolve("origin/" + prevBranch);
             RevWalk walk = (RevWalk) new Git(repo).log().add(resolvedBranch).not(resolvedPrevBranch).call();
             walk.sort(RevSort.TOPO);
-            List<Ref> list = new Git(repo).tagList().call();
             walk.setRevFilter(new FirstParentFilter());
             for (RevCommit revCommit : walk) {
                 Escaper escaper = HtmlEscapers.htmlEscaper();
@@ -53,16 +52,20 @@ public class GitMetadataUploader {
                         escaper.escape(commiterName),
                         escaper.escape(StringUtils.abbreviate(sanitizedMessage, 2048))
                 );
-                Point point = Point.measurement("commit")
-                        .time(revCommit.getCommitTime(), TimeUnit.MILLISECONDS)
+                Point.Builder pointBuilder = Point.measurement("commit")
+                        .time(revCommit.getCommitTime(), TimeUnit.SECONDS)
                         .tag("branch", branch)
                         .addField("sha", revCommit.name())
                         .addField("shortsha", revCommit.name().substring(0, 10))
                         .addField("user", commiterName)
                         .addField("message", sanitizedMessage)
-                        .addField("annotationHtml", annotationHtml)
-                        .build();
-                batchPoints.point(point);
+                        .addField("annotationHtml", annotationHtml);
+                List<String> tags = tagsOfCommit(walk, revCommit);
+                if (!tags.isEmpty()) {
+                    pointBuilder.addField("tag", tags.get(0));
+                }
+
+                batchPoints.point(pointBuilder.build());
             }
             influxDB.write(batchPoints);
         } catch (IOException | GitAPIException t) {
@@ -71,9 +74,10 @@ public class GitMetadataUploader {
 
     }
 
-    private List<String> tagsOfCommit(RevWalk walk, List<Ref> list, RevCommit revCommit) throws IOException {
+    public List<String> tagsOfCommit(RevWalk walk, RevCommit revCommit) throws IOException, GitAPIException {
+        List<Ref> tagList = new Git(repo).tagList().call();
         List<String> tags = new ArrayList<String>();
-        for (Ref tag : list) {
+        for (Ref tag : tagList) {
             RevObject object = walk.parseAny(tag.getObjectId());
             if (object instanceof RevTag) {
                 if (((RevTag) object).getObject().equals(revCommit)) {
@@ -81,8 +85,9 @@ public class GitMetadataUploader {
                 }
             } else if (object instanceof RevCommit) {
                 if (object.equals(revCommit)) {
-                    tags.add(((RevTag) object).getTagName());
+                    tags.add(tag.getName());
                 }
+
             } else {
                 // invalid
             }

@@ -3,24 +3,27 @@ package scala.bench;
 import okhttp3.Credentials;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.influxdb.InfluxDB;
 import org.influxdb.InfluxDBFactory;
 import org.influxdb.dto.BatchPoints;
-import org.influxdb.dto.Point;
 
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.List;
 
 public class ResultPersister {
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, GitAPIException {
         Repository gitRepo = openGit();
         InfluxDB influxDB = connectDb();
 
 
         BatchPoints points = BatchPoints.database("scala_benchmark").build();
-        points.point(Point.measurement("test").addField("sha", "\"\\\"a b\"\\\"".replace("\\", "\\\\")).build());
         influxDB.write(points);
 
         try {
