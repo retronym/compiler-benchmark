@@ -24,7 +24,8 @@ val infrastructure = project.enablePlugins(JmhPlugin).settings(
     "org.influxdb" % "influxdb-java" % "2.5",
     "org.eclipse.jgit" % "org.eclipse.jgit" % "3.4.1.201406201815-r",
     "com.google.guava" % "guava" % "20.0",
-    "org.apache.commons" % "commons-lang3" % "3.5"
+    "org.apache.commons" % "commons-lang3" % "3.5",
+    "com.typesafe" % "config" % "1.3.1"
   )
 )
 

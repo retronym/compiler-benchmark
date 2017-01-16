@@ -27,6 +27,14 @@ public class GitMetadataUploader {
         this.influxDB = influxDB;
     }
 
+    public void uploadAllGitMetadata() {
+        upload("2.13.x", "2.12.x");
+        upload("2.12.x", "2.11.x");
+        upload("2.11.x", "2.10.x");
+        upload("2.10.x", "2.9.x");
+        upload("2.9.x", "2.8.x");
+    }
+
     public void upload(String branch, String prevBranch) {
         BatchPoints batchPoints = BatchPoints
                 .database("scala_benchmark")

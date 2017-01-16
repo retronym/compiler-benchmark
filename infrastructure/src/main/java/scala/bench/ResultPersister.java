@@ -1,13 +1,12 @@
 package scala.bench;
 
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import okhttp3.Credentials;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
-import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.influxdb.InfluxDB;
 import org.influxdb.InfluxDBFactory;
@@ -15,24 +14,17 @@ import org.influxdb.dto.BatchPoints;
 
 import java.io.IOException;
 import java.nio.file.Paths;
-import java.util.List;
 
 public class ResultPersister {
     public static void main(String[] args) throws IOException, GitAPIException {
         Repository gitRepo = openGit();
         InfluxDB influxDB = connectDb();
-
-
         BatchPoints points = BatchPoints.database("scala_benchmark").build();
         influxDB.write(points);
 
         try {
             GitMetadataUploader uploader = new GitMetadataUploader(gitRepo, influxDB);
-            uploader.upload("2.13.x", "2.12.x");
-            uploader.upload("2.12.x", "2.11.x");
-            uploader.upload("2.11.x", "2.10.x");
-            uploader.upload("2.10.x", "2.9.x");
-            uploader.upload("2.9.x", "2.8.x");
+            uploader.uploadAllGitMetadata();
         } finally {
             influxDB.close();
             gitRepo.close();
@@ -40,16 +32,19 @@ public class ResultPersister {
     }
 
     private static Repository openGit() throws IOException {
-        return new FileRepositoryBuilder().setGitDir(Paths.get("/code/scala").resolve(".git").toFile())
+        Config conf = ConfigFactory.load();
+        String gitLocalDir = conf.getString("git.localdir");
+        return new FileRepositoryBuilder().setGitDir(Paths.get(gitLocalDir).resolve(".git").toFile())
                 .readEnvironment() // Do we need this?
                 .findGitDir()
                 .build();
     }
 
     private static InfluxDB connectDb() {
-        String influxUrl = "https://scala-ci.typesafe.com/influx/";
-        String influxUser = "scala";
-        String influxPassword = System.getenv("INFLUX_PASSWORD");
+        Config conf = ConfigFactory.load();
+        String influxUrl = conf.getString("influx.url");
+        String influxUser = conf.getString("influx.user");
+        String influxPassword = conf.getString("influx.password");
 
         OkHttpClient.Builder client = new OkHttpClient.Builder();
 
