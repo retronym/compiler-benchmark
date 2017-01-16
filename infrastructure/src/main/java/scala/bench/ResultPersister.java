@@ -31,16 +31,20 @@ public class ResultPersister {
         }
     }
 
-    private static Repository openGit() throws IOException {
+    public static Repository openGit() {
         Config conf = ConfigFactory.load();
         String gitLocalDir = conf.getString("git.localdir");
-        return new FileRepositoryBuilder().setGitDir(Paths.get(gitLocalDir).resolve(".git").toFile())
-                .readEnvironment() // Do we need this?
-                .findGitDir()
-                .build();
+        try {
+            return new FileRepositoryBuilder().setGitDir(Paths.get(gitLocalDir).resolve(".git").toFile())
+                    .readEnvironment() // Do we need this?
+                    .findGitDir()
+                    .build();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    private static InfluxDB connectDb() {
+    public static InfluxDB connectDb() {
         Config conf = ConfigFactory.load();
         String influxUrl = conf.getString("influx.url");
         String influxUser = conf.getString("influx.user");

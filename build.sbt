@@ -20,6 +20,7 @@ resolvers ++= (
 val infrastructure = project.enablePlugins(JmhPlugin).settings(
   description := "Infrastrucuture to persist benchmark results annoted with context from Git",
   autoScalaLibrary := false,
+  crossPaths := false,
   libraryDependencies ++= Seq(
     "org.influxdb" % "influxdb-java" % "2.5",
     "org.eclipse.jgit" % "org.eclipse.jgit" % "4.6.0.201612231935-r",
@@ -43,12 +44,12 @@ val compilation = project.enablePlugins(JmhPlugin).settings(
 val micro = project.enablePlugins(JmhPlugin).settings(
   description := "Finer grained benchmarks of compiler internals",
   libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
-)
+).dependsOn(infrastructure)
 
 val jvm = project.enablePlugins(JmhPlugin).settings(
   description := "Pure Java benchmarks for demonstrating performance anomalies independent from the Scala language/library",
   autoScalaLibrary := false
-)
+).dependsOn(infrastructure)
 
 val ui = project.settings(
   scalaVersion := "2.11.8",

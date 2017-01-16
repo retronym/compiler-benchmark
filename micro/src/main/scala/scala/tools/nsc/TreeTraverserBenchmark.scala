@@ -18,6 +18,8 @@ class TreeTraverserBenchmark {
   var tree: Global#Tree = _
   @Param(value = Array[String](""))
   var _scalaVersion: String = _
+  @Param(value = Array[String](""))
+  var _scalaRef: String = _
   @Param(Array("../corpus/vector/Vector.scala"))
   var file: String = _
 
