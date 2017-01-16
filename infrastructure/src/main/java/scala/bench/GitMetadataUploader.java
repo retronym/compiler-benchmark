@@ -7,6 +7,7 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.ReflogEntry;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.*;
 import org.eclipse.jgit.revwalk.filter.RevFilter;
@@ -28,26 +29,30 @@ public class GitMetadataUploader {
     }
 
     public void uploadAllGitMetadata() {
-        upload("2.13.x", "2.12.x");
-        upload("2.12.x", "2.11.x");
-        upload("2.11.x", "2.10.x");
-        upload("2.10.x", "2.9.x");
-        upload("2.9.x", "2.8.x");
+        // forkPoint parameter generated manually with:
+        // git log --topo-order --first-parent --oneline 2.13.x --not 2.12.x | tail -1
+        // TODO find this with JGit.
+        upload("2.13.x", "2.12.x", "fc1aea6712");
+        upload("2.12.x", "2.11.x", "132a0587ab");
+        upload("2.11.x", "2.10.x", "7ac15a1210");
+        upload("2.10.x", "2.9.x", "cc672b023e");
+        upload("2.9.x", "2.8.x", "33e1dac4e4");
     }
 
-    public void upload(String branch, String prevBranch) {
+    public void upload(String branch, String prevBranch, String forkPoint) {
         BatchPoints batchPoints = BatchPoints
                 .database("scala_benchmark")
                 .retentionPolicy("autogen")
                 .consistency(InfluxDB.ConsistencyLevel.ALL)
                 .build();
         try {
-            ObjectId resolvedBranch = repo.resolve("origin/" + branch);
-            ObjectId resolvedPrevBranch = repo.resolve("origin/" + prevBranch);
-            RevWalk walk = (RevWalk) new Git(repo).log().add(resolvedBranch).not(resolvedPrevBranch).call();
-            walk.sort(RevSort.TOPO);
-            walk.setRevFilter(new FirstParentFilter());
-            for (RevCommit revCommit : walk) {
+            ObjectId resolvedBranch = resolve(branch);
+            ObjectId resolvedPrevBranch = resolve(prevBranch);
+            ObjectId resolvedForkPoint = resolve(forkPoint);
+
+            RevWalk walk = new RevWalk(repo);
+            RevCommit revCommit = walk.parseCommit(resolvedBranch);
+            while (!resolvedForkPoint.getName().equals(revCommit.getName())) {
                 Escaper escaper = HtmlEscapers.htmlEscaper();
                 String commiterName = revCommit.getCommitterIdent().getName();
 
@@ -74,12 +79,27 @@ public class GitMetadataUploader {
                 }
 
                 batchPoints.point(pointBuilder.build());
+                revCommit = walk.parseCommit(revCommit.getParent(0));
             }
             influxDB.write(batchPoints);
         } catch (IOException | GitAPIException t) {
             throw new RuntimeException(t);
         }
 
+    }
+
+    private ObjectId resolve(String branch) throws IOException {
+        RevWalk walk = new RevWalk(repo);
+        try {
+            ObjectId id = repo.resolve("origin/" + branch);
+            if (id == null) {
+                return walk.parseCommit(repo.resolve(branch));
+            } else {
+                return id;
+            }
+        } finally {
+            walk.dispose();
+        }
     }
 
     public List<String> tagsOfCommit(RevWalk walk, RevCommit revCommit) throws IOException, GitAPIException {
@@ -101,27 +121,5 @@ public class GitMetadataUploader {
             }
         }
         return tags;
-    }
-
-    class FirstParentFilter extends RevFilter {
-        private Set<RevCommit> ignoreCommits = new HashSet<>();
-
-        @Override
-        public boolean include(RevWalk revWalk, RevCommit commit) throws IOException {
-            for (int i = 0; i < commit.getParentCount() - 1; i++) {
-                ignoreCommits.add(commit.getParent(i + 1));
-            }
-            boolean include = true;
-            if (ignoreCommits.contains(commit)) {
-                include = false;
-                ignoreCommits.remove(commit);
-            }
-            return include;
-        }
-
-        @Override
-        public RevFilter clone() {
-            return new FirstParentFilter();
-        }
     }
 }

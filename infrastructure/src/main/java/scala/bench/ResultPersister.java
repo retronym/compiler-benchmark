@@ -61,7 +61,7 @@ public class ResultPersister {
                     .build();
         });
         InfluxDB influxDB = InfluxDBFactory.connect(influxUrl, influxUser, influxPassword, client);
-        influxDB.setLogLevel(InfluxDB.LogLevel.FULL);
+        // influxDB.setLogLevel(InfluxDB.LogLevel.FULL);
         return influxDB;
     }
 }
