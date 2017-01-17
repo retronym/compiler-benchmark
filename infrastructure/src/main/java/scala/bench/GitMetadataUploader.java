@@ -7,10 +7,8 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Ref;
-import org.eclipse.jgit.lib.ReflogEntry;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.*;
-import org.eclipse.jgit.revwalk.filter.RevFilter;
 import org.influxdb.InfluxDB;
 import org.influxdb.dto.BatchPoints;
 import org.influxdb.dto.Point;
@@ -21,33 +19,33 @@ import java.util.concurrent.TimeUnit;
 
 public class GitMetadataUploader {
     private Repository repo;
-    private InfluxDB influxDB;
+    private Map<String, String> branchesMap = new HashMap<>();
 
-    public GitMetadataUploader(Repository repo, InfluxDB influxDB) {
+    public GitMetadataUploader(Repository repo) {
         this.repo = repo;
-        this.influxDB = influxDB;
     }
 
-    public void uploadAllGitMetadata() {
+    public BatchPoints createAllPoints() {
         // forkPoint parameter generated manually with:
         // git log --topo-order --first-parent --oneline 2.13.x --not 2.12.x | tail -1
         // TODO find this with JGit.
-        upload("2.13.x", "2.12.x", "fc1aea6712");
-        upload("2.12.x", "2.11.x", "132a0587ab");
-        upload("2.11.x", "2.10.x", "7ac15a1210");
-        upload("2.10.x", "2.9.x", "cc672b023e");
-        upload("2.9.x", "2.8.x", "33e1dac4e4");
-    }
-
-    public void upload(String branch, String prevBranch, String forkPoint) {
         BatchPoints batchPoints = BatchPoints
                 .database("scala_benchmark")
                 .retentionPolicy("autogen")
                 .consistency(InfluxDB.ConsistencyLevel.ALL)
                 .build();
+        createPoints("2.13.x", "fc1aea6712", batchPoints);
+        createPoints("2.12.x", "132a0587ab", batchPoints);
+        createPoints("v2.12.0", "05016d9035", batchPoints);
+        createPoints("2.11.x", "7ac15a1210", batchPoints);
+        createPoints("2.10.x", "cc672b023e", batchPoints);
+        createPoints("2.9.x", "33e1dac4e4", batchPoints);
+        return batchPoints;
+    }
+
+    private BatchPoints createPoints(String branch, String forkPoint, BatchPoints batchPoints) {
         try {
             ObjectId resolvedBranch = resolve(branch);
-            ObjectId resolvedPrevBranch = resolve(prevBranch);
             ObjectId resolvedForkPoint = resolve(forkPoint);
 
             RevWalk walk = new RevWalk(repo);
@@ -77,18 +75,19 @@ public class GitMetadataUploader {
                 if (!tags.isEmpty()) {
                     pointBuilder.addField("tag", tags.get(0));
                 }
+                Point point = pointBuilder.build();
 
-                batchPoints.point(pointBuilder.build());
+                branchesMap.put(revCommit.name(), branch);
+                batchPoints.point(point);
                 revCommit = walk.parseCommit(revCommit.getParent(0));
             }
-            influxDB.write(batchPoints);
         } catch (IOException | GitAPIException t) {
             throw new RuntimeException(t);
         }
-
+        return batchPoints;
     }
 
-    private ObjectId resolve(String branch) throws IOException {
+    private ObjectId resolve(String branch)  {
         RevWalk walk = new RevWalk(repo);
         try {
             ObjectId id = repo.resolve("origin/" + branch);
@@ -97,6 +96,8 @@ public class GitMetadataUploader {
             } else {
                 return id;
             }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         } finally {
             walk.dispose();
         }
@@ -122,4 +123,9 @@ public class GitMetadataUploader {
         }
         return tags;
     }
+
+    public String branchOfRef(String scalaVersion) {
+        return branchesMap.get(resolve(scalaVersion).getName());
+    }
+
 }

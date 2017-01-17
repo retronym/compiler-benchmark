@@ -43,7 +43,20 @@ val compilation = project.enablePlugins(JmhPlugin).settings(
 
 val micro = project.enablePlugins(JmhPlugin).settings(
   description := "Finer grained benchmarks of compiler internals",
-  libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
+  libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value,
+  javaOptions ++= {
+    def refOf(version: String) = {
+      val HasSha = """.*-([0-9a-f]{7,})-.*""".r
+      version match {
+        case HasSha(sha) => sha
+        case _ => "v" + version
+      }
+    }
+    List(
+      "-DscalaVersion=" + scalaVersion.value,
+      "-DscalaRef=" + refOf(scalaVersion.value)
+    )
+  }
 ).dependsOn(infrastructure)
 
 val jvm = project.enablePlugins(JmhPlugin).settings(
@@ -100,7 +113,7 @@ commands += Command.args("runBatch", ""){ (s: State, args: Seq[String]) =>
     (sub, b) <- runBatchBenches.value
     v <- runBatchVersions.value
   } yield {
-    val argLine = s" -p _scalaVersion=$v $b ${args.mkString(" ")} ${p._2} -rf csv -rff $targetDir/${p._1}-$b-$v.csv"
+    val argLine = s" -p $b ${args.mkString(" ")} ${p._2} -rf csv -rff $targetDir/${p._1}-$b-$v.csv"
     println(argLine)
 
     (s1: State) => {
@@ -114,4 +127,18 @@ commands += Command.args("runBatch", ""){ (s: State, args: Seq[String]) =>
     val newState = fun(state)
     Project.extract(newState).runInputTask(runMain in ui in Compile, " compilerbenchmark.PlotData", newState)._1
   })
+}
+
+javaOptions in ThisBuild ++= {
+  def refOf(version: String) = {
+    val HasSha = """.*-([0-9a-f]{7,})-.*""".r
+    version match {
+      case HasSha(sha) => sha
+      case _ => "v" + version
+    }
+  }
+  List(
+    "-DscalaVersion=" + scalaVersion.value,
+    "-DscalaRef=" + refOf(scalaVersion.value)
+  )
 }

@@ -13,13 +13,21 @@ import org.openjdk.jmh.infra.BenchmarkParams;
 import org.openjdk.jmh.results.BenchmarkResult;
 import org.openjdk.jmh.runner.format.OutputFormat;
 
+import java.lang.management.ManagementFactory;
 import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 public class UploadingOutputFormat extends DelegatingOutputFormat {
+
+    private final GitMetadataUploader gitMetadataUploader;
+
     public UploadingOutputFormat(OutputFormat delegate) {
         super(delegate);
+        Repository repository = ResultPersister.openGit();
+        gitMetadataUploader = new GitMetadataUploader(repository);
+        gitMetadataUploader.createAllPoints();
     }
 
     @Override
@@ -45,22 +53,30 @@ public class UploadingOutputFormat extends DelegatingOutputFormat {
             BenchmarkParams params = result.getParams();
             Collection<String> paramsKeys = params.getParamsKeys();
             pointBuilder.tag("label", result.getPrimaryResult().getLabel());
+            pointBuilder.tag("benchmark", result.getParams().getBenchmark());
+//            pointBuilder.addField("startTime", result.getMetadata().getStartTime());
             pointBuilder.addField("score", result.getPrimaryResult().getScore());
             pointBuilder.addField("sampleCount", result.getPrimaryResult().getSampleCount());
             for (String key : paramsKeys) {
                 pointBuilder.addField(key, params.getParam(key));
             }
 
-            String scalaVersion = params.getParam("_scalaRef");
-            Objects.requireNonNull(scalaVersion, "\"_scalaRef\" parameter not found among " + paramsKeys);
+            String scalaVersion = System.getProperty("scalaVersion");
+            String scalaRef = System.getProperty("scalaRef");
+            if (scalaRef == null) {
+                List<String> inputArguments = ManagementFactory.getRuntimeMXBean().getInputArguments();
+                System.out.println("input arguments = " + inputArguments);
+                throw new RuntimeException("Please provide -DscalaRef=...\n\n" + inputArguments);
+            }
             Config conf = ConfigFactory.load();
             String hostUUID = conf.getString("host.uuid");
+            pointBuilder.tag("branch", gitMetadataUploader.branchOfRef(scalaRef));
             pointBuilder.tag("hostUUID", hostUUID);
 
-            RevWalk walk = new RevWalk(repo);
-            RevCommit revCommit = walk.parseCommit(repo.resolve(scalaVersion));
-            pointBuilder.time(revCommit.getCommitTime(), TimeUnit.SECONDS);
-
+            try (RevWalk walk = new RevWalk(repo)) {
+                RevCommit revCommit = walk.parseCommit(repo.resolve(scalaRef));
+                pointBuilder.time(revCommit.getCommitTime(), TimeUnit.SECONDS);
+            }
             batchPoints.point(pointBuilder.build());
             influxDB.write(batchPoints);
         } catch (Exception e) {

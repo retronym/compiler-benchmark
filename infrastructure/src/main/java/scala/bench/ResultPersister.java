@@ -23,8 +23,9 @@ public class ResultPersister {
         influxDB.write(points);
 
         try {
-            GitMetadataUploader uploader = new GitMetadataUploader(gitRepo, influxDB);
-            uploader.uploadAllGitMetadata();
+            GitMetadataUploader uploader = new GitMetadataUploader(gitRepo);
+            BatchPoints batchPoints = uploader.createAllPoints();
+            influxDB.write(batchPoints);
         } finally {
             influxDB.close();
             gitRepo.close();
