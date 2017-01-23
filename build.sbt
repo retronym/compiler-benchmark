@@ -17,7 +17,7 @@ resolvers ++= (
     Nil
 )
 
-val infrastructure = project.enablePlugins(JmhPlugin).settings(
+lazy val infrastructure = project.enablePlugins(JmhPlugin).settings(
   description := "Infrastrucuture to persist benchmark results annoted with context from Git",
   autoScalaLibrary := false,
   crossPaths := false,
@@ -33,38 +33,25 @@ val infrastructure = project.enablePlugins(JmhPlugin).settings(
   )
 )
 
-val compilation = project.enablePlugins(JmhPlugin).settings(
+lazy val compilation = project.enablePlugins(JmhPlugin).settings(
   // We should be able to switch this project to a broad range of Scala versions for comparative
   // benchmarking. As such, this project should only depend on the high level `MainClass` compiler API.
   description := "Black box benchmark of the compiler",
   libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
-).dependsOn(infrastructure)
+).settings(addJavaOptions).dependsOn(infrastructure)
 
 
-val micro = project.enablePlugins(JmhPlugin).settings(
+lazy val micro = project.enablePlugins(JmhPlugin).settings(
   description := "Finer grained benchmarks of compiler internals",
-  libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value,
-  javaOptions ++= {
-    def refOf(version: String) = {
-      val HasSha = """.*-([0-9a-f]{7,})-.*""".r
-      version match {
-        case HasSha(sha) => sha
-        case _ => "v" + version
-      }
-    }
-    List(
-      "-DscalaVersion=" + scalaVersion.value,
-      "-DscalaRef=" + refOf(scalaVersion.value)
-    )
-  }
-).dependsOn(infrastructure)
+  libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
+).settings(addJavaOptions).dependsOn(infrastructure)
 
-val jvm = project.enablePlugins(JmhPlugin).settings(
+lazy val jvm = project.enablePlugins(JmhPlugin).settings(
   description := "Pure Java benchmarks for demonstrating performance anomalies independent from the Scala language/library",
   autoScalaLibrary := false
-).dependsOn(infrastructure)
+).settings(addJavaOptions).dependsOn(infrastructure)
 
-val ui = project.settings(
+lazy val ui = project.settings(
   scalaVersion := "2.11.8",
   libraryDependencies += "com.github.tototoshi" %% "scala-csv" % "1.3.3",
   libraryDependencies += "com.h2database" % "h2" % "1.4.192"
@@ -129,7 +116,7 @@ commands += Command.args("runBatch", ""){ (s: State, args: Seq[String]) =>
   })
 }
 
-javaOptions in ThisBuild ++= {
+lazy val addJavaOptions = javaOptions ++= {
   def refOf(version: String) = {
     val HasSha = """.*-([0-9a-f]{7,})-.*""".r
     version match {

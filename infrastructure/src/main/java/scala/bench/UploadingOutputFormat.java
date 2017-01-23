@@ -53,12 +53,12 @@ public class UploadingOutputFormat extends DelegatingOutputFormat {
             BenchmarkParams params = result.getParams();
             Collection<String> paramsKeys = params.getParamsKeys();
             pointBuilder.tag("label", result.getPrimaryResult().getLabel());
-            pointBuilder.tag("benchmark", result.getParams().getBenchmark());
+            pointBuilder.tag("benchmark", result.getParams().getBenchmark().replace("scala.tools.nsc.", ""));
 //            pointBuilder.addField("startTime", result.getMetadata().getStartTime());
             pointBuilder.addField("score", result.getPrimaryResult().getScore());
             pointBuilder.addField("sampleCount", result.getPrimaryResult().getSampleCount());
             for (String key : paramsKeys) {
-                pointBuilder.addField(key, params.getParam(key));
+                pointBuilder.tag(key, params.getParam(key));
             }
 
             String scalaVersion = System.getProperty("scalaVersion");
@@ -76,9 +76,10 @@ public class UploadingOutputFormat extends DelegatingOutputFormat {
             try (RevWalk walk = new RevWalk(repo)) {
                 RevCommit revCommit = walk.parseCommit(repo.resolve(scalaRef));
                 pointBuilder.time(revCommit.getCommitTime(), TimeUnit.SECONDS);
+                batchPoints.point(pointBuilder.build());
+                influxDB.write(batchPoints);
+                System.out.println("Uploaded " + batchPoints.getPoints().size()+ " points to benchmark database for " + scalaRef + "/" + revCommit.getName() + ", " + revCommit.getCommitTime() + "s");
             }
-            batchPoints.point(pointBuilder.build());
-            influxDB.write(batchPoints);
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
