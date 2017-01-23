@@ -17,7 +17,7 @@ class ScalacBenchmark {
   var driver: MainClass = _
 
   protected def compile(): Unit = {
-     var compilerArgs =
+    val compilerArgs =
       if (source.startsWith("@")) Array(source)
       else {
         import scala.collection.JavaConverters._
