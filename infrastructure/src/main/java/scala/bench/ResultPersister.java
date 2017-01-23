@@ -20,7 +20,6 @@ public class ResultPersister {
         Repository gitRepo = openGit();
         InfluxDB influxDB = connectDb();
         BatchPoints points = BatchPoints.database("scala_benchmark").build();
-        influxDB.write(points);
 
         try {
             GitMetadataUploader uploader = new GitMetadataUploader(gitRepo);

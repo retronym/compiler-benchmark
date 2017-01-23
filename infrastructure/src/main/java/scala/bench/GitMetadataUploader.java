@@ -43,6 +43,10 @@ public class GitMetadataUploader {
         return batchPoints;
     }
 
+    public void upload(BatchPoints batchPoints) {
+
+    }
+
     private BatchPoints createPoints(String branch, String forkPoint, BatchPoints batchPoints) {
         try {
             ObjectId resolvedBranch = resolve(branch);
@@ -50,7 +54,8 @@ public class GitMetadataUploader {
 
             RevWalk walk = new RevWalk(repo);
             RevCommit revCommit = walk.parseCommit(resolvedBranch);
-            while (!resolvedForkPoint.getName().equals(revCommit.getName())) {
+            boolean done = false;
+            while (!done) {
                 Escaper escaper = HtmlEscapers.htmlEscaper();
                 String commiterName = revCommit.getCommitterIdent().getName();
 
@@ -79,7 +84,12 @@ public class GitMetadataUploader {
 
                 branchesMap.put(revCommit.name(), branch);
                 batchPoints.point(point);
-                revCommit = walk.parseCommit(revCommit.getParent(0));
+
+                if (resolvedForkPoint.getName().equals(revCommit.getName())) {
+                    done = true;
+                } else {
+                    revCommit = walk.parseCommit(revCommit.getParent(0));
+                }
             }
         } catch (IOException | GitAPIException t) {
             throw new RuntimeException(t);
