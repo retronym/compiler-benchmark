@@ -14,7 +14,7 @@ class ScalacBenchmark {
   var source: String = _
   @Param(value = Array(""))
   var extraArgs: String = _
-  var driver: MainClass = _
+  var driver: Driver = _
 
   protected def compile(): Unit = {
     val compilerArgs =
@@ -24,7 +24,17 @@ class ScalacBenchmark {
         val allFiles = Files.walk(findSourceDir).collect(Collectors.toList[Path]).asScala.toList
         allFiles.filter(_.getFileName.toString.endsWith(".scala")).map(_.toAbsolutePath.toString).toArray
       }
-    val driver = new scala.tools.nsc.MainClass {
+
+    // MainClass is copy-pasted from compiler for source compatibility with 2.10.x - 2.13.x
+    class MainClass extends Driver with EvalLoop {
+      def resident(compiler: Global): Unit = loop { line =>
+        val command = new CompilerCommand(line split "\\s+" toList, new Settings(scalacError))
+        compiler.reporter.reset()
+        new compiler.Run() compile command.files
+      }
+
+      override def newCompiler(): Global = Global(settings, reporter)
+
       override protected def processSettingsHook(): Boolean = {
         settings.usejavacp.value = true
         settings.outdir.value = tempOutDir.getAbsolutePath
@@ -34,6 +44,8 @@ class ScalacBenchmark {
         true
       }
     }
+    val driver = new MainClass
+
     driver.process(compilerArgs)
     assert(!driver.reporter.hasErrors)
   }
