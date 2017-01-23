@@ -55,11 +55,14 @@ public class UploadingOutputFormat extends DelegatingOutputFormat {
             pointBuilder.tag("label", result.getPrimaryResult().getLabel());
             pointBuilder.tag("benchmark", result.getParams().getBenchmark().replace("scala.tools.nsc.", ""));
 //            pointBuilder.addField("startTime", result.getMetadata().getStartTime());
+            for (String key : paramsKeys) {
+                String value = params.getParam(key);
+                if (value != null && !value.isEmpty()) {
+                    pointBuilder.tag(key, value);
+                }
+            }
             pointBuilder.addField("score", result.getPrimaryResult().getScore());
             pointBuilder.addField("sampleCount", result.getPrimaryResult().getSampleCount());
-            for (String key : paramsKeys) {
-                pointBuilder.tag(key, params.getParam(key));
-            }
 
             String scalaVersion = System.getProperty("scalaVersion");
             String scalaRef = System.getProperty("scalaRef");
