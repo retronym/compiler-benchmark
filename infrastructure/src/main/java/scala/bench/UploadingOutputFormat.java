@@ -14,9 +14,9 @@ import org.openjdk.jmh.results.BenchmarkResult;
 import org.openjdk.jmh.runner.format.OutputFormat;
 
 import java.lang.management.ManagementFactory;
-import java.util.Collection;
-import java.util.List;
-import java.util.Objects;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 public class UploadingOutputFormat extends DelegatingOutputFormat {
@@ -54,7 +54,6 @@ public class UploadingOutputFormat extends DelegatingOutputFormat {
             Collection<String> paramsKeys = params.getParamsKeys();
             pointBuilder.tag("label", result.getPrimaryResult().getLabel());
             pointBuilder.tag("benchmark", result.getParams().getBenchmark().replace("scala.tools.nsc.", ""));
-//            pointBuilder.addField("startTime", result.getMetadata().getStartTime());
             for (String key : paramsKeys) {
                 String value = params.getParam(key);
                 if (value != null && !value.isEmpty()) {
@@ -63,6 +62,8 @@ public class UploadingOutputFormat extends DelegatingOutputFormat {
             }
             pointBuilder.addField("score", result.getPrimaryResult().getScore());
             pointBuilder.addField("sampleCount", result.getPrimaryResult().getSampleCount());
+            pointBuilder.addField("scoreError", result.getPrimaryResult().getScoreError());
+            pointBuilder.addField("scoreUnit", result.getPrimaryResult().getScoreUnit());
 
             String scalaVersion = System.getProperty("scalaVersion");
             String scalaRef = System.getProperty("scalaRef");
@@ -72,9 +73,9 @@ public class UploadingOutputFormat extends DelegatingOutputFormat {
                 throw new RuntimeException("Please provide -DscalaRef=...\n\n" + inputArguments);
             }
             Config conf = ConfigFactory.load();
-            String hostUUID = conf.getString("host.uuid");
             pointBuilder.tag("branch", gitMetadataUploader.branchOfRef(scalaRef));
-            pointBuilder.tag("hostUUID", hostUUID);
+            pointBuilder.tag("hostId", getHostId());
+            pointBuilder.addField("scalaVersion", scalaVersion);
 
             try (RevWalk walk = new RevWalk(repo)) {
                 RevCommit revCommit = walk.parseCommit(repo.resolve(scalaRef));
@@ -89,5 +90,29 @@ public class UploadingOutputFormat extends DelegatingOutputFormat {
         } finally {
             influxDB.close();
         }
+    }
+
+    private static String getHostId() throws Exception {
+        StringBuilder hostId = new StringBuilder();
+        hostId.append(InetAddress.getLocalHost().getHostName());
+        String mac = getHardwareAddress();
+        if (mac != null) {
+            hostId.append("@").append(hostId);
+        }
+        return hostId.toString();
+    }
+
+    private static String getHardwareAddress() throws Exception {
+        InetAddress ip = InetAddress.getLocalHost();
+        NetworkInterface ni = NetworkInterface.getByInetAddress(ip);
+        if (!ni.isVirtual() && !ni.isLoopback() && !ni.isPointToPoint() && ni.isUp()) {
+            final byte[] bb = ni.getHardwareAddress();
+            StringBuilder builder = new StringBuilder();
+            for (byte b : bb) {
+                builder.append(String.format("%02X", b));
+            }
+            return builder.toString();
+        }
+        return null;
     }
 }
