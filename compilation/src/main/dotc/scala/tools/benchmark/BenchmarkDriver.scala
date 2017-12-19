@@ -1,10 +1,13 @@
 package scala.tools.benchmark
 
 import java.io.File
-import scala.tools.nsc.BaseBenchmarkDriver
+
+import scala.tools.nsc.{BaseBenchmarkDriver, YProfiler}
 import dotty.tools.dotc.core.Contexts.ContextBase
 
 trait BenchmarkDriver extends BaseBenchmarkDriver {
+  def profileArgs: List[String] = Nil
+
   def compileImpl(): Unit = {
     implicit val ctx = new ContextBase().initialCtx.fresh
     ctx.setSetting(ctx.settings.usejavacp, true)

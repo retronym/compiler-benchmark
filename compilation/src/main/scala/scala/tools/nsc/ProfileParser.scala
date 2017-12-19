@@ -1,79 +1,65 @@
 package scala.tools.nsc
 
 import java.io.PrintWriter
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Files, Path, Paths}
+import java.util.DoubleSummaryStatistics
 
 import scala.collection.JavaConverters.asScalaIteratorConverter
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
-class ProfileParser {
-  //  Profiler compile 219 after phase  9:optimus_remove_reporter     single                   -- wallClockTime:       2.4109ms, idleTime:       0.0000ms, cpuTime       2.0810ms, userTime      10.0000ms, allocatedBytes       0.0430MB, retainedHeapBytes       0.0000MB, gcTime      0ms
-
-
-}
-
-case class PhaseId(id: Int, name: String)
+case class PhaseId(name: String)
 
 class RunData(val target: String) {
-  val results = mutable.LinkedHashMap[PhaseId, mutable.LinkedHashMap[String, (Double, String)]]()
+  val results = mutable.LinkedHashMap[PhaseId, mutable.LinkedHashMap[String, (DoubleSummaryStatistics, String)]]()
   def log(phaseId: PhaseId, name: String, value: Double, unit: String): Unit = {
-    results.getOrElseUpdate(phaseId, new mutable.LinkedHashMap[String, (Double, String)]()).update(name, (value, unit))
+    val map = results.getOrElseUpdate(phaseId, new mutable.LinkedHashMap())
+    map.get(name) match {
+      case Some((oldvalue, _)) => oldvalue.accept(value)
+      case None =>
+        val stats = new DoubleSummaryStatistics
+        stats.accept(value)
+        map.update(name, (stats, unit))
+
+    }
   }
 }
 
 object ProfileParser {
+  def main(args: Array[String]): Unit = {
+    val input = Paths.get(args.apply(0))
+    val parser = new ProfileParser(false)
+    val outFile = input.resolveSibling(input.getFileName + ".csv")
+    parser.processFiles(List(input), outFile)
+    println("Wrote: " + outFile.toAbsolutePath.toString)
+  }
+}
+
+class ProfileParser(collapse: Boolean) {
   private val runs = new mutable.LinkedHashMap[String, RunData]()
   private val DataPattern = """Profiler compile (\d+)\s+after phase\s+(\d)+:\s*(\w+)\s*(single|total)\s*--(.*)""".r
   private val StartPattern = """Profiler start \((\d+)\) (.*)""".r
   private val MeasurementPattern = """(.*?):?\s+([-\d\.]+)(ms|MB).*""".r
+  private val YStatsBanner = """\*\*\* Cumulative statistics at phase (\S+)""".r
+  private val YStatsSimpleValue = """#(.*?)\s+:\s+(\d+)""".r
+  private val YStatsTimeValue = """(.*?)\s+:\s+\d+ spans, (\d+)ms""".r
+  private val YStatsTimePartialValue = """(.*?)\s+:\s+\d+ spans, (\d+)ms \(([\d\.]+)%\)""".r
 
-  def process(i: String) = {
-    i match {
-      case StartPattern(run, target) =>
-        runs.put(run.toString, new RunData(target))
-      case DataPattern(run, phaseId, phaseName, style, data) =>
-        runs.get(run.toString) match {
-          case Some(runData) =>
-            data.split(',').map {
-              x =>
-                val MeasurementPattern(name, value, unit) = x.trim
-                if (style == "total")
-                  runData.log(PhaseId(-1, "total"), name, value.toDouble, unit)
-                else
-                  runData.log(PhaseId(phaseId.toInt, phaseName), name, value.toDouble, unit)
-            }
-          case _ =>
-            println(i)
-        }
-      case _ =>
-    }
-  }
+  private var lastRun: String = _
+  private var inStats = false
+  private var statsPhaseName: String = ""
 
-  def writeCsv(writer: PrintWriter) = {
-    val headings = runs.head._2.results.head._2.keys.toList
-    writer.print("Run, Target, Phase Id, Phase, ")
-    writer.println(headings.mkString("", ", ", ", "))
-    for ((run, data) <- runs) {
-      val runFields = List(run, data.target)
-      for ((phase, phaseResults) <- data.results) {
-        val phaseFields = List(phase.id, phase.name)
-        val dataFields = headings.map(key => phaseResults(key)._1)
-        writer.println((runFields ::: phaseFields ::: dataFields).mkString(", "))
+  def processFiles(inputs: List[Path], outFile: Path): Unit = {
+    for (input <- inputs) {
+      val lines = Files.lines(input)
+      println(input)
+      try {
+        lines.iterator().asScala.foreach(process)
+      } finally {
+        lines.close()
       }
     }
-  }
 
-  def main(args: Array[String]): Unit = {
-    val input = Paths.get(args.apply(0))
-
-    val lines = Files.lines(input)
-    try {
-      lines.iterator().asScala.foreach(process)
-    } finally {
-      lines.close()
-    }
-
-    val outFile = input.resolveSibling(input.getFileName + ".csv")
     val writer = new PrintWriter(Files.newBufferedWriter(outFile))
 
     try {
@@ -81,6 +67,76 @@ object ProfileParser {
     } finally {
       writer.close()
     }
-    println("Wrote: " + outFile.toAbsolutePath.toString)
+  }
+
+  private def runFor(runString: String): String = if (collapse) "<all>" else runString
+  private def process(i: String) = {
+    i match {
+      case StartPattern(run, target) =>
+        runs.put(runFor(run), new RunData(target))
+        inStats = false
+      case DataPattern(run, phaseIdString, phaseName, style, data) =>
+        lastRun = runFor(run)
+        runs.get(lastRun) match {
+          case Some(runData) =>
+            data.split(',').foreach {
+              x =>
+                val MeasurementPattern(name, value, unit) = x.trim
+                if (style != "total") {
+                  val phaseId = PhaseId(phaseName)
+                  runData.log(phaseId, name, value.toDouble, unit)
+                }
+            }
+          case _ =>
+            println(i)
+        }
+        inStats = false
+      case YStatsBanner(phaseName) =>
+        inStats = true
+        statsPhaseName = phaseName
+      case YStatsSimpleValue(name, value) =>
+        if (inStats) {
+          runs.get(lastRun) match {
+            case Some(runData) =>
+              if (!collapse || !name.endsWith("%"))
+                runData.log(PhaseId(statsPhaseName), name, value.toDouble, "")
+            case None =>
+          }
+        }
+      case YStatsTimePartialValue(name, value, pct) =>
+        if (inStats) {
+          runs.get(lastRun) match {
+            case Some(runData) =>
+              runData.log(PhaseId(statsPhaseName), name, value.toDouble, "")
+              if (!collapse)
+                runData.log(PhaseId(statsPhaseName), name + " %", pct.toDouble, "")
+            case None =>
+          }
+        }
+      case YStatsTimeValue(name, value) =>
+        if (inStats) {
+          runs.get(lastRun) match {
+            case Some(runData) =>
+              runData.log(PhaseId(statsPhaseName), name, value.toDouble, "")
+            case None =>
+          }
+        }
+      case _ =>
+    }
+  }
+
+  def writeCsv(writer: PrintWriter) = {
+    val headings = mutable.LinkedHashSet[String]()
+    for (r <- runs; result <- r._2.results; key <- result._2.keys) headings += key
+    writer.print("Run, Target, Phase, ")
+    writer.println(headings.mkString("", ", ", ", "))
+    for ((run, data) <- runs) {
+      val runFields = List(run, data.target)
+      for ((phase, phaseResults) <- data.results) {
+        val phaseFields = List(phase.name)
+        val dataFields = headings.toList.map(key => phaseResults.get(key).map(_._1.getAverage).getOrElse(0d))
+        writer.println((runFields ::: phaseFields ::: dataFields).mkString(", "))
+      }
+    }
   }
 }

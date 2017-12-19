@@ -13,6 +13,12 @@ trait BenchmarkDriver extends BaseBenchmarkDriver {
     sys.props("java.class.path").split(File.pathSeparatorChar).filter(_.matches(""".*\bscala-(reflect|compiler|library).*\.jar""")).mkString(":")
   }
 
+  def profileArgs: List[String] = {
+    if (java.lang.Boolean.getBoolean(YProfiler.EnableProfilerPropName)) {
+      List("-Yprofile-enabled")
+    } else Nil
+  }
+
   // MainClass is copy-pasted from compiler for source compatibility with 2.10.x - 2.13.x
   private class MainClass extends Driver with EvalLoop {
     var compiler: Global = _
@@ -50,6 +56,7 @@ trait BenchmarkDriver extends BaseBenchmarkDriver {
 
     } else {
       driver = new MainClass
+      println(allArgs)
       driver.process(allArgs.toArray)
     }
     assert(!driver.reporter.hasErrors)
