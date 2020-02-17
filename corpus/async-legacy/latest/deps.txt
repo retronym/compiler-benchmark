@@ -1,0 +1,1 @@
+https://repo1.maven.org/maven2/org/scala-lang/modules/scala-async_2.12/0.10.0/scala-async_2.12-0.10.0.jar
